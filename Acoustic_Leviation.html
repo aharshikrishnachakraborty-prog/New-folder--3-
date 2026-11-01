@@ -1,0 +1,97 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>Acoustic Levitation Lab</title>
+<style>
+:root{--pn:rgba(14,24,42,.88);--tx:#e8eef8;--mu:#9fb0c8;--ac:#f5a623;--ln:#2a3a52;--bt:#1d2c44;color-scheme:dark;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:light){:root:not([data-theme="dark"]){--pn:rgba(255,255,255,.92);--tx:#14202e;--mu:#52627a;--ln:#d4dbe6;--bt:#eef2f8}}
+:root[data-theme="dark"]{--pn:rgba(14,24,42,.88);--tx:#e8eef8;--mu:#9fb0c8;--ln:#2a3a52;--bt:#1d2c44}
+html,body{height:100%;margin:0;overflow:hidden;background:#0b1220;font-family:Calibri,'Segoe UI',Arial,sans-serif}
+canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
+#pill{position:absolute;left:14px;top:calc(14px + env(safe-area-inset-top,0px));padding:7px 14px;border-radius:20px;background:rgba(14,24,42,.8);color:#e8eef8;font-size:14px;font-weight:700}
+#hint{position:absolute;left:14px;bottom:14px;color:#9fb0c8;font-size:12px}
+#panel{position:absolute;right:12px;top:calc(12px + env(safe-area-inset-top,0px));width:280px;max-height:calc(100% - 24px);overflow:auto;background:var(--pn);color:var(--tx);border:1px solid var(--ln);border-radius:14px;padding:14px 16px;backdrop-filter:blur(8px)}
+h1{margin:0;font:700 19px Georgia,serif}.sub{margin:3px 0 12px;font-size:12px;color:var(--mu)}
+label{display:block;margin:9px 0 0;font-size:12.5px;color:var(--mu)}label b{float:right;color:var(--tx)}
+input[type=range]{width:100%;accent-color:#f5a623;margin:4px 0 0}
+button{font:700 13px Calibri,Arial,sans-serif;color:var(--tx);background:var(--bt);border:1px solid var(--ln);border-radius:9px;padding:9px 10px;cursor:pointer}
+button.on{background:#f5a623;color:#14202e;border-color:#f5a623}#pw{width:100%;margin-bottom:4px}
+.row{display:flex;gap:8px;margin-top:12px}.row button{flex:1}
+#read{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+#read div{border:1px solid var(--ln);border-radius:9px;padding:6px 9px;font-size:11px;color:var(--mu)}#read b{display:block;font-size:15px;color:var(--tx)}
+.note{margin:10px 0 0;font-size:11px;color:var(--mu)}
+@media (max-width:700px){#panel{left:8px;right:8px;top:auto;bottom:8px;width:auto;max-height:46%}#hint{display:none}}
+</style></head><body>
+<canvas id="c"></canvas><div id="pill">Levitating</div><div id="hint">Drag to rotate · scroll to zoom</div>
+<div id="panel"><h1>Acoustic Levitation Lab</h1><p class="sub">Interactive 3D model of a single-axis standing-wave levitator</p>
+<button id="pw" class="on">Sound ON</button>
+<label>Frequency <b id="fv">40.0 kHz</b><input type="range" id="f" min="35" max="45" step="0.1" value="40"></label>
+<label>Transducer gap <b id="gv">34.3 mm</b><input type="range" id="g" min="24" max="60" step="0.1" value="34.3"></label>
+<label>Phase shift (steering) <b id="pv">0°</b><input type="range" id="p" min="0" max="360" step="1" value="0"></label>
+<label>Foam beads <b id="bv">5</b><input type="range" id="b" min="1" max="12" step="1" value="5"></label>
+<div class="row"><button id="tune">Tune to resonance</button><button id="drop">Drop beads</button></div>
+<div id="read"><div>Wavelength<b id="r1"></b></div><div>Trap spacing<b id="r2"></b></div><div>Traps<b id="r3"></b></div><div>Trap strength<b id="r4"></b></div></div>
+<p class="note">Slow-motion, simplified physics (c = 343 m/s). This is a simulation, not a physical device.</p></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+var $=function(i){return document.getElementById(i)};
+var cv=$('c'),R=new THREE.WebGLRenderer({canvas:cv,antialias:true});R.setClearColor(0x0b1220);R.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+var sc=new THREE.Scene(),cam=new THREE.PerspectiveCamera(40,1,1,1000);
+sc.add(new THREE.AmbientLight(0xffffff,.6));var dl=new THREE.DirectionalLight(0xffffff,.9);dl.position.set(40,80,60);sc.add(dl);
+var S={on:true,f:40,gap:34.3,ph:0,n:5},G=300,K=400,CD=7;
+var metal=new THREE.MeshStandardMaterial({color:0x8794a8,metalness:.6,roughness:.35}),dark=new THREE.MeshStandardMaterial({color:0x1b2638,metalness:.3,roughness:.6});
+var refl=new THREE.Mesh(new THREE.CylinderGeometry(24,24,3,48),metal);refl.position.y=-1.5;sc.add(refl);
+var top=new THREE.Group();sc.add(top);var plate=new THREE.Mesh(new THREE.CylinderGeometry(24,24,3,48),dark);plate.position.y=6.5;top.add(plate);
+for(var a=-3;a<=3;a++)for(var b=-3;b<=3;b++){var x=9.6*(a+b/2),z=9.6*b*0.866;if(Math.hypot(x,z)<=20){var t=new THREE.Mesh(new THREE.CylinderGeometry(4.4,4.4,5,24),metal);t.position.set(x,2.5,z);top.add(t);}}
+var pm=new THREE.ShaderMaterial({transparent:true,depthWrite:false,side:THREE.DoubleSide,uniforms:{t:{value:0},lam:{value:8.6},gap:{value:34},sh:{value:0},pw:{value:1}},
+vertexShader:'varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
+fragmentShader:'varying vec2 vUv;uniform float t,lam,gap,sh,pw;void main(){float z=vUv.y*gap;float x=(vUv.x-.5)*44.;float a=cos(6.2831853/lam*(z-sh));float p=a*cos(t*9.);float r=exp(-x*x/120.);vec3 c=mix(vec3(.15,.55,1.),vec3(1.,.62,.15),.5+.5*p);gl_FragColor=vec4(c,pw*r*(.08+.5*abs(a)));}'});
+var pa=new THREE.Mesh(new THREE.PlaneGeometry(44,1),pm),pb=new THREE.Mesh(new THREE.PlaneGeometry(44,1),pm);pb.rotation.y=Math.PI/2;sc.add(pa);sc.add(pb);
+var dm=new THREE.MeshBasicMaterial({color:0x55d4ff,transparent:true,opacity:.17,depthWrite:false,side:THREE.DoubleSide}),discs=[];
+for(var i=0;i<30;i++){var d=new THREE.Mesh(new THREE.CircleGeometry(9,32),dm);d.rotation.x=-Math.PI/2;sc.add(d);discs.push(d);}
+var bm=new THREE.MeshStandardMaterial({color:0xfff6e0,emissive:0x553300,roughness:.5}),B=[];
+for(var i=0;i<12;i++){var m=new THREE.Mesh(new THREE.SphereGeometry(1.05,20,16),bm);sc.add(m);B.push({m:m,v:new THREE.Vector3(),tz:-99});}
+function lam(){return 343/S.f}
+function nodes(){var h=lam()/2,b=((lam()/4+S.ph/360*h)%h+h)%h,o=[];for(var z=b;z<S.gap-.9;z+=h)if(z>.9)o.push(z);return o}
+function strength(){var n=S.gap/(lam()/2),fr=n-Math.round(n);return Math.pow(Math.cos(Math.PI*fr),2)}
+function drop(){B.forEach(function(o){o.m.position.set((Math.random()-.5)*14,6+Math.random()*(S.gap-12),(Math.random()-.5)*14);o.v.set(0,0,0);o.tz=-99});}
+function step(dt){var N=nodes(),s=strength(),k=dt/4;
+for(var q=0;q<4;q++){
+for(var i=0;i<S.n;i++){var o=B[i],p=o.m.position,v=o.v,fy=-G,fx=0,fz=0;
+if(S.on&&N.length){var best=1e9,bz=N[0];for(var n=0;n<N.length;n++){var c=Math.abs(p.y-N[n]);for(var j=0;j<S.n;j++)if(j!==i&&Math.abs(B[j].tz-N[n])<.5)c+=5;if(c<best){best=c;bz=N[n];}}o.tz=bz;
+fy+=-K*s*(p.y-bz)-CD*v.y;fx+=-60*s*p.x-CD*v.x+(Math.random()-.5)*30;fz+=-60*s*p.z-CD*v.z+(Math.random()-.5)*30;}
+else{o.tz=-99;fy+=-.6*v.y;fx+=-.6*v.x;fz+=-.6*v.z;}
+v.x+=fx*k;v.y+=fy*k;v.z+=fz*k;p.addScaledVector(v,k);
+if(p.y<1.05){p.y=1.05;v.y=-v.y*.35;v.x*=.8;v.z*=.8;}
+if(p.y>S.gap-1.05){p.y=S.gap-1.05;v.y=Math.min(0,v.y);}}
+for(var i=0;i<S.n;i++)for(var j=i+1;j<S.n;j++){var a=B[i].m.position,b=B[j].m.position,dx=a.x-b.x,dy=a.y-b.y,dz=a.z-b.z,l=Math.sqrt(dx*dx+dy*dy+dz*dz);
+if(l<2.1){if(l<1e-3){dx=Math.random()-.5;dz=Math.random()-.5;dy=0;l=Math.sqrt(dx*dx+dz*dz)+1e-6;}var f=(2.1-l)*.5/l;a.x+=dx*f;a.z+=dz*f;a.y+=dy*f*.3;b.x-=dx*f;b.z-=dz*f;b.y-=dy*f*.3;}}}
+return {N:N,s:s}}
+var th=.7,ph=1.3,rad=95,idle=0,drag=null,ty=17;
+cv.addEventListener('pointerdown',function(e){drag=[e.clientX,e.clientY];cv.setPointerCapture(e.pointerId);cv.style.cursor='grabbing'});
+cv.addEventListener('pointermove',function(e){if(!drag)return;th-=(e.clientX-drag[0])*.008;ph=Math.max(.2,Math.min(2.9,ph-(e.clientY-drag[1])*.008));drag=[e.clientX,e.clientY];idle=4});
+cv.addEventListener('pointerup',function(){drag=null;cv.style.cursor='grab'});
+cv.addEventListener('wheel',function(e){e.preventDefault();rad=Math.max(40,Math.min(200,rad*(1+e.deltaY*.001)));idle=4},{passive:false});
+function size(){var w=window.innerWidth,h=window.innerHeight;R.setSize(w,h,false);cam.aspect=w/h;cam.updateProjectionMatrix();}
+window.addEventListener('resize',size);size();
+function ui(){$('fv').textContent=S.f.toFixed(1)+' kHz';$('gv').textContent=S.gap.toFixed(1)+' mm';$('pv').textContent=S.ph+'°';$('bv').textContent=S.n;
+B.forEach(function(o,i){o.m.visible=i<S.n});}
+function bind(id,key,num){$(id).addEventListener('input',function(e){S[key]=parseFloat(e.target.value);ui();});}
+bind('f','f');bind('g','gap');bind('p','ph');
+$('b').addEventListener('input',function(e){var o=S.n;S.n=parseInt(e.target.value,10);for(var i=o;i<S.n;i++){B[i].m.position.set((Math.random()-.5)*10,S.gap-4,(Math.random()-.5)*10);B[i].v.set(0,0,0);B[i].tz=-99}ui();});
+$('pw').addEventListener('click',function(){S.on=!S.on;this.textContent=S.on?'Sound ON':'Sound OFF';this.className=S.on?'on':'';});
+$('tune').addEventListener('click',function(){var n=Math.max(2,Math.round(2*S.gap*S.f/343));S.f=Math.max(35,Math.min(45,Math.round(n*343/(2*S.gap)*10)/10));$('f').value=S.f;ui();});
+$('drop').addEventListener('click',drop);
+drop();ui();
+var last=performance.now(),fc=0,t0=last;
+function loop(now){var dt=Math.min((now-last)/1000,.05);last=now;var r=step(dt),N=r.N;
+pm.uniforms.t.value=(now-t0)/1000;pm.uniforms.lam.value=lam();pm.uniforms.gap.value=S.gap;pm.uniforms.sh.value=S.ph/360*lam()/2;pm.uniforms.pw.value=S.on?1:0;
+[pa,pb].forEach(function(m){m.scale.y=S.gap;m.position.y=S.gap/2});top.position.y=S.gap;
+discs.forEach(function(d,i){d.visible=S.on&&i<N.length;if(d.visible)d.position.y=N[i]});
+if(idle>0)idle-=dt;else th+=dt*.12;
+ty+=((S.gap/2)-ty)*.1;cam.position.set(rad*Math.sin(ph)*Math.sin(th),ty+rad*Math.cos(ph),rad*Math.sin(ph)*Math.cos(th));cam.lookAt(0,ty,0);
+if(++fc%8===0){var l=lam();$('r1').textContent=l.toFixed(2)+' mm';$('r2').textContent=(l/2).toFixed(2)+' mm';$('r3').textContent=N.length;$('r4').textContent=Math.round(r.s*100)+'%';
+var held=0;for(var i=0;i<S.n;i++)if(S.on&&Math.abs(B[i].m.position.y-B[i].tz)<1.6&&B[i].v.length()<25)held++;
+var pl=$('pill');if(!S.on){pl.textContent='Sound off: beads falling';pl.style.color='#ff8a7a'}else if(r.s<.35){pl.textContent='Off resonance: trap too weak';pl.style.color='#ffc15e'}else{pl.textContent='Levitating '+held+' / '+S.n;pl.style.color='#7ee0a8'}}
+R.render(sc,cam);requestAnimationFrame(loop);}
+requestAnimationFrame(loop);
+})();
+</script></body></html>
